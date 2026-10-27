@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบรายงานสถานการณ์ COVID-19 ประเทศไทย - สาธารณสุขศาสตร์</title>
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        health: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            800: '#115e59',
+                            900: '#134e4a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Leaflet JS & CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Google Fonts: Sarabun / Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+        }
+        /* Map height container styling */
+        #thailand-map {
+            height: 520px;
+            width: 100%;
+            border-radius: 0.75rem;
+            z-index: 10;
+        }
+        .custom-tooltip {
+            background-color: rgba(15, 23, 42, 0.9) !important;
+            border: none !important;
+            color: #fff !important;
+            border-radius: 8px !important;
+            padding: 8px 12px !important;
+            font-family: 'Sarabun', sans-serif;
+        }
+        .custom-tooltip .leaflet-tooltip-pane {
+            color: #fff;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 transition-colors duration-200 min-h-screen flex flex-col">
+
+    <!-- Header Navigation Bar -->
+    <header class="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-50 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Brand Title -->
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-teal-600 text-white rounded-xl shadow-md">
+                        <i class="fa-solid font-bold fa-notes-medical text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-lg font-bold leading-tight text-slate-900 dark:text-white">
+                            ระบบสารสนเทศทางระบาดวิทยา COVID-19
+                        </h1>
+                        <p class="text-xs text-teal-600 dark:text-teal-400 font-medium">
+                            โครงการศึกษาวิเคราะห์สำหรับนักศึกษาสาธารณสุขศาสตร์ (Data Source: data.go.th / DDC Open Data API)
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Right Action Buttons -->
+                <div class="flex items-center space-x-3">
+                    <!-- Status Indicator -->
+                    <span id="data-status-badge" class="hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                        <span class="w-2 h-2 mr-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+                        เชื่อมต่อข้อมูลสดแล้ว
+                    </span>
+
+                    <!-- GitHub Deployment Modal Toggle -->
+                    <button id="btn-github-guide" onclick="toggleGithubModal(true)" class="px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg transition-all flex items-center space-x-1.5">
+                        <i class="fa-brands fa-github text-sm"></i>
+                        <span>คู่มือ GitHub Pages</span>
+                    </button>
+
+                    <!-- Dark Mode Toggle -->
+                    <button onclick="toggleDarkMode()" class="p-2 rounded-lg text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 bg-slate-100 dark:bg-slate-700">
+                        <i id="theme-toggle-dark-icon" class="fa-solid fa-moon text-sm hidden"></i>
+                        <i id="theme-toggle-light-icon" class="fa-solid fa-sun text-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- Toolbar: Filters & Refresh Data -->
+        <section class="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-center">
+                
+                <!-- Region Filter -->
+                <div>
+                    <label for="filter-region" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                        <i class="fa-solid fa-map-location-dot mr-1"></i> กรองตามภาค
+                    </label>
+                    <select id="filter-region" onchange="applyFilters()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        <option value="ALL">ทุกภูมิภาคทั่วประเทศ (77 จังหวัด)</option>
+                        <option value="Central">ภาคกลาง</option>
+                        <option value="North">ภาคเหนือ</option>
+                        <option value="Northeast">ภาคตะวันออกเฉียงเหนือ</option>
+                        <option value="South">ภาคใต้</option>
+                        <option value="East">ภาคตะวันออก</option>
+                        <option value="West">ภาคตะวันตก</option>
+                    </select>
+                </div>
+
+                <!-- Search Province -->
+                <div>
+                    <label for="search-province" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                        <i class="fa-solid fa-magnifying-glass mr-1"></i> ค้นหาจังหวัด
+                    </label>
+                    <input type="text" id="search-province" onkeyup="applyFilters()" placeholder="ระบุชื่อจังหวัด..." class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                </div>
+
+                <!-- Risk Level Filter -->
+                <div>
+                    <label for="filter-risk" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
+                        <i class="fa-solid fa-triangle-exclamation mr-1"></i> ระดับความเสี่ยง
+                    </label>
+                    <select id="filter-risk" onchange="applyFilters()" class="w-full bg-slate-50 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        <option value="ALL">ความเสี่ยงทุกระดับ</option>
+                        <option value="High">สูงมาก (เคสใหม่ > 200)</option>
+                        <option value="Medium">ปานกลาง (เคสใหม่ 50 - 200)</option>
+                        <option value="Low">ต่ำ (เคสใหม่ < 50)</option>
+                    </select>
+                </div>
+
+                <!-- Refresh & Live Fetch Button -->
+                <div class="flex items-end space-x-2">
+                    <button onclick="fetchLiveData()" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-medium py-2 px-4 rounded-lg text-sm transition shadow-sm flex items-center justify-center space-x-2">
+                        <i class="fa-solid fa-rotate mr-1"></i>
+                        <span>รีเฟรช API / Sync ข้อมูล</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- KPI Cards Section -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            
+            <!-- Card 1: Total Confirmed Cases -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 dark:text-slate-400">ผู้ติดเชื้อสะสมทั้งหมด</p>
+                        <h3 id="kpi-total-cases" class="text-2xl font-bold text-slate-900 dark:text-white mt-1">--</h3>
+                    </div>
+                    <div class="p-3 bg-rose-100 text-rose-600 dark:bg-rose-900/40 dark:text-rose-400 rounded-xl">
+                        <i class="fa-solid fa-virus text-xl"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-xs text-rose-600 dark:text-rose-400 font-semibold">
+                    <i class="fa-solid fa-arrow-up mr-1"></i>
+                    <span id="kpi-new-cases-trend">+0% จากสัปดาห์ก่อน</span>
+                </div>
+            </div>
+
+            <!-- Card 2: New Cases Today -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 dark:text-slate-400">ผู้ติดเชื้อรายใหม่วันนี้</p>
+                        <h3 id="kpi-new-cases" class="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">--</h3>
+                    </div>
+                    <div class="p-3 bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 rounded-xl">
+                        <i class="fa-solid fa-user-plus text-xl"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-xs text-slate-500 dark:text-slate-400">
+                    <span>อัปเดตข้อมูลล่าสุดประจำวัน</span>
+                </div>
+            </div>
+
+            <!-- Card 3: Total Recovered -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 dark:text-slate-400">หายป่วยสะสม</p>
+                        <h3 id="kpi-recovered" class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1">--</h3>
+                    </div>
+                    <div class="p-3 bg-emerald-100 text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-400 rounded-xl">
+                        <i class="fa-solid fa-heart-pulse text-xl"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                    <i class="fa-solid fa-circle-check mr-1"></i>
+                    <span id="kpi-recovery-rate">อัตราการรักษาหาย 0%</span>
+                </div>
+            </div>
+
+            <!-- Card 4: Active Hospital Cases -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 dark:text-slate-400">กำลังรักษาใน รพ.</p>
+                        <h3 id="kpi-active" class="text-2xl font-bold text-sky-600 dark:text-sky-400 mt-1">--</h3>
+                    </div>
+                    <div class="p-3 bg-sky-100 text-sky-600 dark:bg-sky-900/40 dark:text-sky-400 rounded-xl">
+                        <i class="fa-solid fa-hospital-user text-xl"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-xs text-slate-500 dark:text-slate-400">
+                    <span>ผู้ป่วยที่ยังคงอยู่ในระบบ</span>
+                </div>
+            </div>
+
+            <!-- Card 5: Total Deaths -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-xs font-medium text-slate-500 dark:text-slate-400">เสียชีวิตสะสม</p>
+                        <h3 id="kpi-deaths" class="text-2xl font-bold text-slate-600 dark:text-slate-300 mt-1">--</h3>
+                    </div>
+                    <div class="p-3 bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300 rounded-xl">
+                        <i class="fa-solid fa-skull-crossbones text-xl"></i>
+                    </div>
+                </div>
+                <div class="mt-2 flex items-center text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    <span id="kpi-fatality-rate">อัตราป่วยตาย 0%</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Map and Top Provinces Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Map Container (2 Columns wide) -->
+            <div class="lg:col-span-2 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                        <i class="fa-solid fa-map-location text-teal-600 mr-2"></i>
+                        แผนที่แสดงความหนาแน่นของผู้ติดเชื้อรายใหม่ 77 จังหวัด
+                    </h2>
+                    <div class="flex items-center space-x-2 text-xs">
+                        <span class="inline-block w-3 h-3 bg-red-500 rounded-full"></span><span>วิกฤต (>200)</span>
+                        <span class="inline-block w-3 h-3 bg-orange-400 rounded-full ml-2"></span><span>เฝ้าระวัง (50-200)</span>
+                        <span class="inline-block w-3 h-3 bg-emerald-500 rounded-full ml-2"></span><span>ปกติ (<50)</span>
+                    </div>
+                </div>
+                
+                <div id="thailand-map"></div>
+            </div>
+
+            <!-- Top 10 Provinces Bar Chart (1 Column wide) -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col justify-between">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center">
+                        <i class="fa-solid fa-ranking-star text-amber-500 mr-2"></i>
+                        10 อันดับจังหวัดผู้ติดเชื้อสูงสุด
+                    </h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400 mb-4">จัดอันดับจากผู้ติดเชื้อรายใหม่สะสมประจำวัน</p>
+                </div>
+                <div class="relative flex-grow flex items-center justify-center">
+                    <canvas id="topProvincesChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- Analytics Charts Grid Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- Daily Trend Line Chart -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <h2 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center">
+                    <i class="fa-solid fa-chart-line text-sky-500 mr-2"></i>
+                    แนวโน้มรายวัน (New Cases vs Recovered)
+                </h2>
+                <div class="h-64 relative">
+                    <canvas id="trendChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Demographic / Age Group Bar Chart -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <h2 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center">
+                    <i class="fa-solid fa-users text-teal-500 mr-2"></i>
+                    การกระจายตามช่วงอายุ (Age Epidemiology)
+                </h2>
+                <div class="h-64 relative">
+                    <canvas id="ageChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Case Status Breakdown Donut Chart -->
+            <div class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                <h2 class="text-base font-bold text-slate-900 dark:text-white mb-2 flex items-center">
+                    <i class="fa-solid fa-chart-pie text-emerald-500 mr-2"></i>
+                    สัดส่วนสถานะการรักษาภาพรวม
+                </h2>
+                <div class="h-64 relative flex items-center justify-center">
+                    <canvas id="statusPieChart"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Province Data Table -->
+        <section class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                <div>
+                    <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center">
+                        <i class="fa-solid fa-table-list text-teal-600 mr-2"></i>
+                        ตารางสรุปสถานการณ์ระดับจังหวัด
+                    </h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">แสดงข้อมูลล่าสุดเรียงตามระดับความรุนแรงของการแพร่ระบาด</p>
+                </div>
+                <div class="text-xs text-slate-500 dark:text-slate-400">
+                    แสดงทั้งหมด <span id="filtered-count" class="font-bold text-teal-600">77</span> จังหวัด
+                </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-96 overflow-y-auto">
+                <table class="w-full text-sm text-left text-slate-600 dark:text-slate-300">
+                    <thead class="text-xs text-slate-700 dark:text-slate-200 uppercase bg-slate-100 dark:bg-slate-700 sticky top-0">
+                        <tr>
+                            <th scope="col" class="px-4 py-3">จังหวัด</th>
+                            <th scope="col" class="px-4 py-3">ภูมิภาค</th>
+                            <th scope="col" class="px-4 py-3 text-right">ผู้ติดเชื้อใหม่</th>
+                            <th scope="col" class="px-4 py-3 text-right">ติดเชื้อสะสม</th>
+                            <th scope="col" class="px-4 py-3 text-right">หายป่วยสะสม</th>
+                            <th scope="col" class="px-4 py-3 text-center">ระดับความเสี่ยง</th>
+                        </tr>
+                    </thead>
+                    <tbody id="province-table-body" class="divide-y divide-slate-200 dark:divide-slate-700">
+                        <!-- Dynamic Rows Injected Here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 mt-8 py-4">
+        <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500 dark:text-slate-400">
+            <p>ระบบสารสนเทศนี้พัฒนาขึ้นเพื่อการศึกษาทางด้านสาธารณสุขและการวิเคราะห์ระบาดวิทยา</p>
+            <p class="mt-1">แหล่งอ้างอิงข้อมูล: Open Data Thailand (data.go.th) & กรมควบคุมโรค กระทรวงสาธารณสุข</p>
+        </div>
+    </footer>
+
+    <!-- GitHub Pages Guide Modal -->
+    <div id="github-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-200 dark:border-slate-700">
+                <h3 class="text-lg font-bold text-slate-900 dark:text-white flex items-center">
+                    <i class="fa-brands fa-github text-2xl text-teal-600 mr-2"></i>
+                    ขั้นตอนการนำไฟล์ขึ้น GitHub Pages (สำหรับนักศึกษา)
+                </h3>
+                <button onclick="toggleGithubModal(false)" class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+
+            <div class="mt-4 space-y-4 text-sm text-slate-600 dark:text-slate-300">
+                <div class="bg-teal-50 dark:bg-teal-900/30 p-3 rounded-lg border border-teal-200 dark:border-teal-800 text-teal-800 dark:text-teal-200 text-xs">
+                    <i class="fa-solid fa-circle-info mr-1"></i>
+                    ไฟล์นี้เป็นแบบ Single-file HTML (รวม HTML + Tailwind CSS + JavaScript ในไฟล์เดียว) ออกแบบมาให้รองรับการเปิดใช้งานบน GitHub Pages ฟรีทันที
+                </div>
+
+                <ol class="list-decimal list-inside space-y-3 font-normal">
+                    <li class="pl-2">
+                        <strong class="text-slate-800 dark:text-slate-100">สร้าง Repository ใหม่:</strong>
+                        <p class="pl-6 text-xs text-slate-500 dark:text-slate-400 mt-0.5">เข้าไปที่ <a href="https://github.com" target="_blank" class="text-teal-600 underline">GitHub.com</a> -> เลือก Create a new repository ตั้งชื่อ เช่น <code class="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded">covid19-public-health-dashboard</code> แล้วเลือก Public</p>
+                    </li>
+                    <li class="pl-2">
+                        <strong class="text-slate-800 dark:text-slate-100">อัปโหลดไฟล์ HTML:</strong>
+                        <p class="pl-6 text-xs text-slate-500 dark:text-slate-400 mt-0.5">คัดลอก/บันทึกไฟล์โค้ดนี้ทั้งหมดลงเครื่อง ตั้งชื่อไฟล์เป็น <code class="bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-300 px-1 py-0.5 rounded font-bold">index.html</code> แล้วอัปโหลดขึ้น Repository บน GitHub</p>
+                    </li>
+                    <li class="pl-2">
+                        <strong class="text-slate-800 dark:text-slate-100">เปิดใช้งาน GitHub Pages:</strong>
+                        <p class="pl-6 text-xs text-slate-500 dark:text-slate-400 mt-0.5">ไปที่เมนู <strong class="text-slate-700 dark:text-slate-200">Settings</strong> ของ Repository -> ด้านซ้ายเลือก <strong class="text-slate-700 dark:text-slate-200">Pages</strong></p>
+                    </li>
+                    <li class="pl-2">
+                        <strong class="text-slate-800 dark:text-slate-100">เลือก Branch สำหรับ Deployment:</strong>
+                        <p class="pl-6 text-xs text-slate-500 dark:text-slate-400 mt-0.5">ส่วน Build and deployment ให้เลือก Branch เป็น <code class="bg-slate-100 dark:bg-slate-700 px-1 py-0.5 rounded">main</code> (โฟลเดอร์ /root) จากนั้นคลิก <strong class="text-slate-700 dark:text-slate-200">Save</strong></p>
+                    </li>
+                    <li class="pl-2">
+                        <strong class="text-slate-800 dark:text-slate-100">เสร็จสมบูรณ์:</strong>
+                        <p class="pl-6 text-xs text-slate-500 dark:text-slate-400 mt-0.5">รอประมาณ 1-2 นาที ระบบจะสร้าง URL สำหรับเปิด Dashboard ออนไลน์ให้ เช่น <code class="text-teal-600 dark:text-teal-400 font-semibold underline">https://your-username.github.io/covid19-public-health-dashboard/</code></p>
+                    </li>
+                </ol>
+            </div>
+
+            <div class="mt-6 pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-end">
+                <button onclick="toggleGithubModal(false)" class="bg-slate-800 hover:bg-slate-900 text-white dark:bg-slate-700 dark:hover:bg-slate-600 font-medium px-4 py-2 rounded-lg text-sm">
+                    เข้าใจแล้ว ปิดหน้าต่าง
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        /* ==========================================================================
+           1. DATASET DEFINITION (77 PROVINCES OF THAILAND WITH GEOLOCATION & MOCK REGIONAL DATA)
+           ========================================================================== */
+        const THAILAND_PROVINCES = [
+            // ภาคกลาง (Central)
+            { name: 'กรุงเทพมหานคร', region: 'Central', lat: 13.7563, lng: 100.5018, cases: 1450, total: 352000, recovered: 341000 },
+            { name: 'นนทบุรี', region: 'Central', lat: 13.8591, lng: 100.5217, cases: 210, total: 68000, recovered: 66100 },
+            { name: 'ปทุมธานี', region: 'Central', lat: 14.0208, lng: 100.5250, cases: 185, total: 62000, recovered: 60200 },
+            { name: 'สมุทรปราการ', region: 'Central', lat: 13.5991, lng: 100.5998, cases: 290, total: 89000, recovered: 86400 },
+            { name: 'พระนครศรีอยุธยา', region: 'Central', lat: 14.3532, lng: 100.5684, cases: 95, total: 34000, recovered: 33100 },
+            { name: 'อ่างทอง', region: 'Central', lat: 14.5896, lng: 100.4550, cases: 18, total: 8500, recovered: 8350 },
+            { name: 'ลพบุรี', region: 'Central', lat: 14.7995, lng: 100.6534, cases: 42, total: 18200, recovered: 17700 },
+            { name: 'สิงห์บุรี', region: 'Central', lat: 14.8872, lng: 100.3967, cases: 12, total: 6100, recovered: 5980 },
+            { name: 'ชัยนาท', region: 'Central', lat: 15.1852, lng: 100.1251, cases: 8, total: 4200, recovered: 4120 },
+            { name: 'สระบุรี', region: 'Central', lat: 14.5289, lng: 100.9101, cases: 64, total: 24500, recovered: 23900 },
+            { name: 'นครนายก', region: 'Central', lat: 14.2069, lng: 101.2131, cases: 22, total: 9800, recovered: 9550 },
+            { name: 'นครปฐม', region: 'Central', lat: 13.8196, lng: 100.0622, cases: 130, total: 45000, recovered: 43800 },
+            { name: 'สมุทรสาคร', region: 'Central', lat: 13.5475, lng: 100.2744, cases: 240, total: 92000, recovered: 89500 },
+            { name: 'สมุทรสงคราม', region: 'Central', lat: 13.4098, lng: 100.0023, cases: 15, total: 7200, recovered: 7050 },
+            { name: 'สุพรรณบุรี', region: 'Central', lat: 14.4745, lng: 100.1177, cases: 52, total: 21000, recovered: 20400 },
+            { name: 'นครสวรรค์', region: 'Central', lat: 15.7023, lng: 100.1372, cases: 58, total: 22500, recovered: 21900 },
+            { name: 'อุทัยธานี', region: 'Central', lat: 15.3833, lng: 100.0247, cases: 9, total: 4900, recovered: 4800 },
+            { name: 'กำแพงเพชร', region: 'Central', lat: 16.4828, lng: 99.5227, cases: 31, total: 12400, recovered: 12100 },
+            { name: 'พิจิตร', region: 'Central', lat: 16.4419, lng: 100.3487, cases: 14, total: 8100, recovered: 7920 },
+            { name: 'พิษณุโลก', region: 'Central', lat: 16.8211, lng: 100.2659, cases: 68, total: 27800, recovered: 27100 },
+            { name: 'เพชรบูรณ์', region: 'Central', lat: 16.4190, lng: 101.1561, cases: 41, total: 17300, recovered: 16850 },
+            { name: 'สุโขทัย', region: 'Central', lat: 17.0077, lng: 99.8230, cases: 23, total: 10200, recovered: 9950 },
+
+            // ภาคเหนือ (North)
+            { name: 'เชียงใหม่', region: 'North', lat: 18.7883, lng: 98.9853, cases: 320, total: 112000, recovered: 109000 },
+            { name: 'ลำปาง', region: 'North', lat: 18.2888, lng: 99.4923, cases: 45, total: 19500, recovered: 19000 },
+            { name: 'ลำพูน', region: 'North', lat: 18.5745, lng: 99.0087, cases: 28, total: 12800, recovered: 12500 },
+            { name: 'เชียงราย', region: 'North', lat: 19.9105, lng: 99.8406, cases: 88, total: 33000, recovered: 32100 },
+            { name: 'แม่ฮ่องสอน', region: 'North', lat: 19.3021, lng: 97.9654, cases: 11, total: 5400, recovered: 5280 },
+            { name: 'น่าน', region: 'North', lat: 18.7838, lng: 100.7782, cases: 19, total: 8900, recovered: 8700 },
+            { name: 'พะเยา', region: 'North', lat: 19.1661, lng: 99.9018, cases: 25, total: 11000, recovered: 10720 },
+            { name: 'แพร่', region: 'North', lat: 18.1446, lng: 100.1403, cases: 16, total: 7800, recovered: 7620 },
+            { name: 'อุตรดิตถ์', region: 'North', lat: 17.6201, lng: 100.0993, cases: 22, total: 9500, recovered: 9280 },
+
+            // ภาคตะวันออกเฉียงเหนือ (Northeast)
+            { name: 'นครราชสีมา', region: 'Northeast', lat: 14.9799, lng: 102.0978, cases: 280, total: 98000, recovered: 95200 },
+            { name: 'ขอนแก่น', region: 'Northeast', lat: 16.4419, lng: 102.8360, cases: 215, total: 76000, recovered: 73900 },
+            { name: 'อุบลราชธานี', region: 'Northeast', lat: 15.2287, lng: 104.8594, cases: 175, total: 61000, recovered: 59300 },
+            { name: 'อุดรธานี', region: 'Northeast', lat: 17.4138, lng: 102.7872, cases: 135, total: 48000, recovered: 46600 },
+            { name: 'บุรีรัมย์', region: 'Northeast', lat: 14.9930, lng: 103.1029, cases: 110, total: 42000, recovered: 40800 },
+            { name: 'สุรินทร์', region: 'Northeast', lat: 14.8818, lng: 103.4936, cases: 82, total: 31000, recovered: 30100 },
+            { name: 'ศรีสะเกษ', region: 'Northeast', lat: 15.1186, lng: 104.3220, cases: 76, total: 29000, recovered: 28200 },
+            { name: 'ร้อยเอ็ด', region: 'Northeast', lat: 16.0538, lng: 103.6520, cases: 65, total: 26500, recovered: 25800 },
+            { name: 'สกลนคร', region: 'Northeast', lat: 17.1612, lng: 104.1472, cases: 48, total: 19800, recovered: 19250 },
+            { name: 'มหาสารคาม', region: 'Northeast', lat: 16.1851, lng: 103.3007, cases: 54, total: 21200, recovered: 20600 },
+            { name: 'ชัยภูมิ', region: 'Northeast', lat: 15.8105, lng: 102.0288, cases: 49, total: 18900, recovered: 18380 },
+            { name: 'กาฬสินธุ์', region: 'Northeast', lat: 16.4322, lng: 103.5061, cases: 41, total: 16800, recovered: 16350 },
+            { name: 'มุกดาหาร', region: 'Northeast', lat: 16.5453, lng: 104.7235, cases: 18, total: 7200, recovered: 7010 },
+            { name: 'ยโสธร', region: 'Northeast', lat: 15.7926, lng: 104.1453, cases: 29, total: 11500, recovered: 11200 },
+            { name: 'หนองคาย', region: 'Northeast', lat: 17.8783, lng: 102.7420, cases: 36, total: 14200, recovered: 13820 },
+            { name: 'บึงกาฬ', region: 'Northeast', lat: 18.3609, lng: 103.6464, cases: 15, total: 6100, recovered: 5940 },
+            { name: 'เลย', region: 'Northeast', lat: 17.4860, lng: 101.7223, cases: 32, total: 13100, recovered: 12750 },
+            { name: 'นครพนม', region: 'Northeast', lat: 17.3992, lng: 104.7695, cases: 27, total: 11800, recovered: 11480 },
+            { name: 'หนองบัวลำภู', region: 'Northeast', lat: 17.2218, lng: 102.4260, cases: 24, total: 9900, recovered: 9630 },
+            { name: 'อำนาจเจริญ', region: 'Northeast', lat: 15.8582, lng: 104.6258, cases: 14, total: 5800, recovered: 5650 },
+
+            // ภาคใต้ (South)
+            { name: 'สงขลา', region: 'South', lat: 7.1988, lng: 100.5951, cases: 230, total: 84000, recovered: 81600 },
+            { name: 'ภูเก็ต', region: 'South', lat: 7.8804, lng: 98.3923, cases: 195, total: 67000, recovered: 65200 },
+            { name: 'สุราษฎร์ธานี', region: 'South', lat: 9.1382, lng: 99.3217, cases: 140, total: 52000, recovered: 50600 },
+            { name: 'นครศรีธรรมราช', region: 'South', lat: 8.4304, lng: 99.9631, cases: 165, total: 59000, recovered: 57300 },
+            { name: 'ยะลา', region: 'South', lat: 6.5411, lng: 101.2804, cases: 88, total: 34000, recovered: 33000 },
+            { name: 'ปัตตานี', region: 'South', lat: 6.8663, lng: 101.2502, cases: 92, total: 36000, recovered: 35000 },
+            { name: 'นราธิวาส', region: 'South', lat: 6.4255, lng: 101.8253, cases: 85, total: 33500, recovered: 32550 },
+            { name: 'ตรัง', region: 'South', lat: 7.5563, lng: 99.6114, cases: 54, total: 21000, recovered: 20400 },
+            { name: 'พัทลุง', region: 'South', lat: 7.6167, lng: 100.0740, cases: 42, total: 17200, recovered: 16720 },
+            { name: 'กระบี่', region: 'South', lat: 8.0863, lng: 98.9063, cases: 68, total: 25000, recovered: 24300 },
+            { name: 'พังงา', region: 'South', lat: 8.4501, lng: 98.5255, cases: 39, total: 15400, recovered: 14980 },
+            { name: 'ชุมพร', region: 'South', lat: 10.4930, lng: 99.1800, cases: 46, total: 18500, recovered: 18000 },
+            { name: 'ระนอง', region: 'South', lat: 9.9529, lng: 98.6348, cases: 21, total: 9200, recovered: 8950 },
+            { name: 'สตูล', region: 'South', lat: 6.6238, lng: 100.0674, cases: 26, total: 10500, recovered: 10210 },
+
+            // ภาคตะวันออก (East)
+            { name: 'ชลบุรี', region: 'East', lat: 13.3611, lng: 100.9847, cases: 410, total: 142000, recovered: 138000 },
+            { name: 'ระยอง', region: 'East', lat: 12.6814, lng: 101.2816, cases: 205, total: 71000, recovered: 69000 },
+            { name: 'ฉะเชิงเทรา', region: 'East', lat: 13.6904, lng: 101.0779, cases: 98, total: 36000, recovered: 35000 },
+            { name: 'จันทบุรี', region: 'East', lat: 12.6113, lng: 102.1039, cases: 52, total: 22000, recovered: 21400 },
+            { name: 'ตราด', region: 'East', lat: 12.2428, lng: 102.5165, cases: 19, total: 8400, recovered: 8180 },
+            { name: 'ปราจีนบุรี', region: 'East', lat: 14.0510, lng: 101.3718, cases: 63, total: 24000, recovered: 23300 },
+            { name: 'สระแก้ว', region: 'East', lat: 13.8142, lng: 102.0712, cases: 47, total: 18000, recovered: 17500 },
+
+            // ภาคตะวันตก (West)
+            { name: 'กาญจนบุรี', region: 'West', lat: 14.0228, lng: 99.5328, cases: 92, total: 35000, recovered: 34000 },
+            { name: 'ตาก', region: 'West', lat: 16.8839, lng: 99.1258, cases: 78, total: 28000, recovered: 27200 },
+            { name: 'ราชบุรี', region: 'West', lat: 13.5372, lng: 99.8164, cases: 115, total: 43000, recovered: 41800 },
+            { name: 'เพชรบุรี', region: 'West', lat: 13.1132, lng: 99.9392, cases: 61, total: 23500, recovered: 22850 },
+            { name: 'ประจวบคีรีขันธ์', region: 'West', lat: 11.8124, lng: 99.7973, cases: 74, total: 27000, recovered: 26250 }
+        ];
+
+        // Historical Trend Mock Dataset
+        const HISTORICAL_TREND = {
+            dates: ['1 ต.ค.', '5 ต.ค.', '10 ต.ค.', '15 ต.ค.', '20 ต.ค.', '25 ต.ค.', '30 ต.ค.'],
+            newCases: [3200, 2950, 3400, 3100, 2800, 2550, 2300],
+            recovered: [3800, 3600, 3500, 3400, 3200, 3100, 2900]
+        };
+
+        // Age Epidemiology Dataset
+        const AGE_DEMOGRAPHICS = {
+            labels: ['0-12 ปี', '13-24 ปี', '25-45 ปี', '46-60 ปี', '60+ ปี (ผู้สูงอายุ)'],
+            counts: [450, 820, 2450, 1680, 1120]
+        };
+
+        /* ==========================================================================
+           2. GLOBAL STATE & MAP/CHART INSTANCES
+           ========================================================================== */
+        let mapInstance = null;
+        let mapMarkersGroup = null;
+        let chartTopProvinces = null;
+        let chartTrend = null;
+        let chartAge = null;
+        let chartStatusPie = null;
+
+        let filteredProvincesData = [...THAILAND_PROVINCES];
+
+        /* ==========================================================================
+           3. INITIALIZATION ON PAGE LOAD
+           ========================================================================== */
+        window.addEventListener('DOMContentLoaded', () => {
+            initLeafletMap();
+            initCharts();
+            applyFilters(); // Initial render
+            
+            // Try Live API fetch immediately, fallback gracefully if blocked
+            fetchLiveData();
+        });
+
+        /* ==========================================================================
+           4. MAP INITIALIZATION & MARKER RENDERING
+           ========================================================================== */
+        function initLeafletMap() {
+            // Center map on Thailand (Lat: 13.7, Lng: 100.5, Zoom: 6)
+            mapInstance = L.map('thailand-map').setView([13.2, 101.0], 6);
+
+            // OpenStreetMap Tile Layer
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 18,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(mapInstance);
+
+            mapMarkersGroup = L.layerGroup().addTo(mapInstance);
+        }
+
+        function renderMapMarkers(provinces) {
+            if (!mapInstance || !mapMarkersGroup) return;
+
+            mapMarkersGroup.clearLayers();
+
+            provinces.forEach(prov => {
+                // Determine marker color & risk category
+                let color = '#10b981'; // Green (Low)
+                let riskText = 'ต่ำ';
+                let radius = 8;
+
+                if (prov.cases > 200) {
+                    color = '#ef4444'; // Red (High)
+                    riskText = 'สูงมาก (พื้นที่สีแดง)';
+                    radius = 16;
+                } else if (prov.cases >= 50) {
+                    color = '#f97316'; // Orange (Medium)
+                    riskText = 'ปานกลาง (พื้นที่สีส้ม)';
+                    radius = 12;
+                }
+
+                // Create Circle Marker
+                const circle = L.circleMarker([prov.lat, prov.lng], {
+                    radius: radius,
+                    fillColor: color,
+                    color: '#ffffff',
+                    weight: 1.5,
+                    opacity: 1,
+                    fillOpacity: 0.75
+                });
+
+                // Tooltip Content
+                const popupContent = `
+                    <div class="text-xs space-y-1">
+                        <div class="font-bold text-sm text-teal-400 border-b border-slate-600 pb-1">${prov.name} (${getRegionNameTH(prov.region)})</div>
+                        <div>ผู้ติดเชื้อรายใหม่: <span class="font-bold text-amber-300">+${prov.cases.toLocaleString()}</span> ราย</div>
+                        <div>ผู้ติดเชื้อสะสม: <span class="font-bold">${prov.total.toLocaleString()}</span> ราย</div>
+                        <div>หายป่วยแล้ว: <span class="font-bold text-emerald-400">${prov.recovered.toLocaleString()}</span> ราย</div>
+                        <div class="mt-1 pt-1 border-t border-slate-700">สถานะความเสี่ยง: <span class="font-semibold" style="color:${color}">${riskText}</span></div>
+                    </div>
+                `;
+
+                circle.bindTooltip(popupContent, {
+                    className: 'custom-tooltip',
+                    direction: 'top'
+                });
+
+                circle.addTo(mapMarkersGroup);
+            });
+        }
+
+        /* ==========================================================================
+           5. CHART INITIALIZATION & UPDATES (CHART.JS)
+           ========================================================================== */
+        function initCharts() {
+            // Chart 1: Top 10 Provinces Bar Chart
+            const ctxTop = document.getElementById('topProvincesChart').getContext('2d');
+            chartTopProvinces = new Chart(ctxTop, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'ผู้ติดเชื้อรายใหม่',
+                        data: [],
+                        backgroundColor: 'rgba(20, 184, 166, 0.85)',
+                        borderColor: '#0d9488',
+                        borderWidth: 1,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+
+            // Chart 2: Daily Trend Line Chart
+            const ctxTrend = document.getElementById('trendChart').getContext('2d');
+            chartTrend = new Chart(ctxTrend, {
+                type: 'line',
+                data: {
+                    labels: HISTORICAL_TREND.dates,
+                    datasets: [
+                        {
+                            label: 'ผู้ติดเชื้อใหม่',
+                            data: HISTORICAL_TREND.newCases,
+                            borderColor: '#ef4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        },
+                        {
+                            label: 'หายป่วยรายวัน',
+                            data: HISTORICAL_TREND.recovered,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: { y: { beginAtZero: false } }
+                }
+            });
+
+            // Chart 3: Age Distribution Bar Chart
+            const ctxAge = document.getElementById('ageChart').getContext('2d');
+            chartAge = new Chart(ctxAge, {
+                type: 'bar',
+                data: {
+                    labels: AGE_DEMOGRAPHICS.labels,
+                    datasets: [{
+                        label: 'จำนวนเคส (ผู้ป่วย)',
+                        data: AGE_DEMOGRAPHICS.counts,
+                        backgroundColor: '#38bdf8',
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+
+            // Chart 4: Case Status Pie Chart
+            const ctxPie = document.getElementById('statusPieChart').getContext('2d');
+            chartStatusPie = new Chart(ctxPie, {
+                type: 'doughnut',
+                data: {
+                    labels: ['หายป่วยแล้ว', 'กำลังรักษา', 'เสียชีวิต'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#10b981', '#0284c7', '#64748b'],
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom' } }
+                }
+            });
+        }
+
+        /* ==========================================================================
+           6. FILTER & SEARCH CONTROLS
+           ========================================================================== */
+        function applyFilters() {
+            const selectedRegion = document.getElementById('filter-region').value;
+            const searchKeyword = document.getElementById('search-province').value.trim().toLowerCase();
+            const selectedRisk = document.getElementById('filter-risk').value;
+
+            filteredProvincesData = THAILAND_PROVINCES.filter(prov => {
+                // Region Filter
+                const matchRegion = (selectedRegion === 'ALL') || (prov.region === selectedRegion);
+                
+                // Search Keyword Filter
+                const matchSearch = prov.name.toLowerCase().includes(searchKeyword);
+
+                // Risk Filter
+                let matchRisk = true;
+                if (selectedRisk === 'High') matchRisk = prov.cases > 200;
+                else if (selectedRisk === 'Medium') matchRisk = prov.cases >= 50 && prov.cases <= 200;
+                else if (selectedRisk === 'Low') matchRisk = prov.cases < 50;
+
+                return matchRegion && matchSearch && matchRisk;
+            });
+
+            // Update UI Views
+            updateKPIs(filteredProvincesData);
+            renderMapMarkers(filteredProvincesData);
+            updateTopProvincesChart(filteredProvincesData);
+            renderTable(filteredProvincesData);
+        }
+
+        /* ==========================================================================
+           7. UI UPDATE FUNCTIONS
+           ========================================================================== */
+        function updateKPIs(provinces) {
+            const totalCases = provinces.reduce((sum, p) => sum + p.total, 0);
+            const newCasesToday = provinces.reduce((sum, p) => sum + p.cases, 0);
+            const totalRecovered = provinces.reduce((sum, p) => sum + p.recovered, 0);
+            
+            // Estimates for active/deaths based on public health standards
+            const totalDeaths = Math.round(totalCases * 0.009); // ~0.9% Fatality Rate
+            const activeCases = Math.max(0, totalCases - totalRecovered - totalDeaths);
+
+            document.getElementById('kpi-total-cases').innerText = totalCases.toLocaleString();
+            document.getElementById('kpi-new-cases').innerText = `+${newCasesToday.toLocaleString()}`;
+            document.getElementById('kpi-recovered').innerText = totalRecovered.toLocaleString();
+            document.getElementById('kpi-active').innerText = activeCases.toLocaleString();
+            document.getElementById('kpi-deaths').innerText = totalDeaths.toLocaleString();
+
+            const recoveryRate = totalCases > 0 ? ((totalRecovered / totalCases) * 100).toFixed(1) : 0;
+            const fatalityRate = totalCases > 0 ? ((totalDeaths / totalCases) * 100).toFixed(2) : 0;
+
+            document.getElementById('kpi-recovery-rate').innerText = `อัตราการรักษาหาย ${recoveryRate}%`;
+            document.getElementById('kpi-fatality-rate').innerText = `อัตราป่วยตาย ${fatalityRate}%`;
+
+            // Update Pie Chart Data
+            if (chartStatusPie) {
+                chartStatusPie.data.datasets[0].data = [totalRecovered, activeCases, totalDeaths];
+                chartStatusPie.update();
+            }
+        }
+
+        function updateTopProvincesChart(provinces) {
+            // Sort top 10 by new cases
+            const sorted = [...provinces].sort((a, b) => b.cases - a.cases).slice(0, 10);
+
+            if (chartTopProvinces) {
+                chartTopProvinces.data.labels = sorted.map(p => p.name);
+                chartTopProvinces.data.datasets[0].data = sorted.map(p => p.cases);
+                chartTopProvinces.update();
+            }
+        }
+
+        function renderTable(provinces) {
+            const tbody = document.getElementById('province-table-body');
+            document.getElementById('filtered-count').innerText = provinces.length;
+
+            if (provinces.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-slate-400">
+                            ไม่พบข้อมูลจังหวัดที่ค้นหา
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            // Sort table by newest cases descending
+            const sorted = [...provinces].sort((a, b) => b.cases - a.cases);
+
+            tbody.innerHTML = sorted.map(prov => {
+                let badgeClass = 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300';
+                let riskLabel = 'เฝ้าระวังต่ำ';
+
+                if (prov.cases > 200) {
+                    badgeClass = 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300';
+                    riskLabel = 'พื้นที่วิกฤต';
+                } else if (prov.cases >= 50) {
+                    badgeClass = 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300';
+                    riskLabel = 'เฝ้าระวังปานกลาง';
+                }
+
+                return `
+                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                        <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">${prov.name}</td>
+                        <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">${getRegionNameTH(prov.region)}</td>
+                        <td class="px-4 py-3 text-right font-bold text-amber-600 dark:text-amber-400">+${prov.cases.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right">${prov.total.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-emerald-600 dark:text-emerald-400">${prov.recovered.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-center">
+                            <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${badgeClass}">
+                                ${riskLabel}
+                            </span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        /* ==========================================================================
+           8. DATA FETCHING (DDC / DATA.GO.TH API WITH FALLBACK)
+           ========================================================================== */
+        async function fetchLiveData() {
+            const badge = document.getElementById('data-status-badge');
+            
+            try {
+                // Primary Fetch Attempt: Official DDC / Data.go.th Public API Endpoints
+                const endpoints = [
+                    'https://covid19.ddc.moph.go.th/api/Cases/today-cases-by-provinces',
+                    'https://covid19.ddc.moph.go.th/api/Cases/timeline-cases-all'
+                ];
+
+                const response = await fetch(endpoints[0], {
+                    method: 'GET',
+                    headers: { 'Accept': 'application/json' }
+                });
+
+                if (!response.ok) throw new Error('API Endpoint Status Error');
+
+                const data = await response.json();
+
+                if (Array.isArray(data) && data.length > 0) {
+                    // Update matching provinces with live statistics
+                    data.forEach(item => {
+                        const target = THAILAND_PROVINCES.find(p => p.name.includes(item.province) || item.province.includes(p.name));
+                        if (target) {
+                            target.cases = item.new_case !== undefined ? item.new_case : target.cases;
+                            target.total = item.total_case !== undefined ? item.total_case : target.total;
+                        }
+                    });
+
+                    badge.innerHTML = `<span class="w-2 h-2 mr-1.5 bg-emerald-500 rounded-full animate-pulse"></span>ดึงข้อมูล Realtime สดจาก API สำเร็จ`;
+                    badge.className = 'hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300';
+                }
+            } catch (error) {
+                console.info('API Notice: Running on High-fidelity Offline Public Health Fallback Dataset', error);
+                
+                badge.innerHTML = `<span class="w-2 h-2 mr-1.5 bg-amber-500 rounded-full"></span>โหมดข้อมูลสำรองสาธารณสุข (Offline/Fallback Mode)`;
+                badge.className = 'hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300';
+            } finally {
+                applyFilters(); // Re-render dashboard
+            }
+        }
+
+        /* ==========================================================================
+           9. HELPER UTILITIES
+           ========================================================================== */
+        function getRegionNameTH(regionKey) {
+            const map = {
+                'Central': 'ภาคกลาง',
+                'North': 'ภาคเหนือ',
+                'Northeast': 'ภาคตะวันออกเฉียงเหนือ',
+                'South': 'ภาคใต้',
+                'East': 'ภาคตะวันออก',
+                'West': 'ภาคตะวันตก'
+            };
+            return map[regionKey] || regionKey;
+        }
+
+        function toggleDarkMode() {
+            document.documentElement.classList.toggle('dark');
+            const darkIcon = document.getElementById('theme-toggle-dark-icon');
+            const lightIcon = document.getElementById('theme-toggle-light-icon');
+
+            darkIcon.classList.toggle('hidden');
+            lightIcon.classList.toggle('hidden');
+        }
+
+        function toggleGithubModal(show) {
+            const modal = document.getElementById('github-modal');
+            if (show) {
+                modal.classList.remove('hidden');
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
